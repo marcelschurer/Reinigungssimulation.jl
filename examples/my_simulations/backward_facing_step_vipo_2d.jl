@@ -1,7 +1,7 @@
 # 2D backward facing step simulation following:
 # http://dx.doi.org/10.1017/S0022112083002839
 # https://doi.org/10.1016/j.icheatmasstransfer.2011.07.003
-# Vipo-princip is used in this example
+# Vipo-princip with BoundaryModelTafuni is used in this example
 
 using TrixiParticles
 using OrdinaryDiffEq
@@ -19,7 +19,7 @@ open_boundary_layers = 6
 
 # ==========================================================================================
 # ==== Experiment Setup
-tspan = (0.0, 0.5)
+tspan = (0.0, 5.0)
 flow_direction = [1.0, 0.0]
 
 # note that you might have to change velocity_function_outlet(pos, t) for another prescribed_velocity
@@ -176,6 +176,7 @@ inflow = InFlow(; plane=([0.0, 0.0], [0.0, fluid_size_inlet[2] * particle_spacin
                 open_boundary_layers, density=fluid_density, particle_spacing)
 
 open_boundary_in = OpenBoundarySPHSystem(inflow; sound_speed, fluid_system,
+                                         boundary_model=BoundaryModelTafuni(),
                                          buffer_size=n_buffer_particles,
                                          reference_velocity=velocity_function_inlet)
 
@@ -196,6 +197,7 @@ outflow = OutFlow(;
 
 open_boundary_out = OpenBoundarySPHSystem(outflow; sound_speed, fluid_system,
                                           buffer_size=n_buffer_particles,
+                                          boundary_model=BoundaryModelTafuni(),
                                           reference_pressure=pressure)
 
 # ==========================================================================================
