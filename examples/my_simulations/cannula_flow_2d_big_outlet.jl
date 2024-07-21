@@ -1,4 +1,6 @@
-# 2D cannula flow simulation with an optional obstacle sphere at the beginning of the flow.
+# 2D backward facing step simulation following:
+# http://dx.doi.org/10.1017/S0022112083002839
+# https://doi.org/10.1016/j.icheatmasstransfer.2011.07.003
 
 using TrixiParticles
 using OrdinaryDiffEq
@@ -12,21 +14,20 @@ smoothing_length = 3 * particle_spacing
 boundary_layers = 4
 
 # It is recommended to use `open_boundary_layers > boundary_layers`
-open_boundary_layers = 8
+open_boundary_layers = 6
 
 # ==========================================================================================
 # ==== Experiment Setup
 tspan = (0.0, 20.0)
 inflow_direction = [1.0, 0.0]
 outflow_direction = [0.0, -1.0]
-
-obstacle = false # true: an obstacle sphere is placed at the beginning of the flow
+obstacle = true # true: an obstacle sphere is placed at the beginning of the flow
 
 l = 30 # length of cannula to the outlet [mm]
 d = 2 # diameter of the cannula [mm]
 recess_length = 5 # length of the recess at the outlet [mm]
 slip_wall_layers = 4 * open_boundary_layers
-slip_wall_layers_outlet = 14 * open_boundary_layers
+slip_wall_layers_outlet = 4 * open_boundary_layers
 
 # note that you might have to change velocity_function_outlet(pos, t) for another prescribed_velocity
 const prescribed_velocity = 1.0 # [m/s]
@@ -63,13 +64,24 @@ fluid_sphere = SphereShape(particle_spacing, (d / 2),
 
 fluid_recess = RectangularShape(particle_spacing,
                                 (Int(recess_length / particle_spacing),
-                                 Int(slip_wall_layers_outlet + boundary_layers)),
+                                 Int(slip_wall_layers_outlet + boundary_layers -
+                                     open_boundary_layers)),
                                 (l,
                                  -(slip_wall_layers_outlet + boundary_layers -
                                    open_boundary_layers) * particle_spacing),
                                 pressure=pressure,
                                 density=fluid_density,
                                 velocity=[0.0, 0.0])
+
+fluid_recess2 = RectangularShape(particle_spacing,
+                                 (Int(0.5 * recess_length / particle_spacing),
+                                  Int(slip_wall_layers_outlet - open_boundary_layers)),
+                                 (l + recess_length,
+                                  -(slip_wall_layers_outlet + boundary_layers -
+                                    open_boundary_layers) * particle_spacing),
+                                 pressure=pressure,
+                                 density=fluid_density,
+                                 velocity=[0.0, 0.0])
 
 obstacle_sphere = SphereShape(particle_spacing,
                               (3 * particle_spacing),
@@ -80,10 +92,10 @@ obstacle_sphere = SphereShape(particle_spacing,
                               sphere_type=RoundSphere())
 
 if obstacle == true
-    ic_fluid = setdiff(union(fluid_rectangular, fluid_sphere, fluid_recess),
+    ic_fluid = setdiff(union(fluid_rectangular, fluid_sphere, fluid_recess, fluid_recess2),
                        obstacle_sphere)
 else
-    ic_fluid = union(fluid_rectangular, fluid_sphere, fluid_recess)
+    ic_fluid = union(fluid_rectangular, fluid_sphere, fluid_recess, fluid_recess2)
 end
 
 # = IC Boundary
@@ -125,7 +137,7 @@ recess_slip_wall_inlet = RectangularShape(particle_spacing,
                                           density=fluid_density)
 
 boundary_slip_wall_outlet = RectangularShape(particle_spacing,
-                                             (Int(recess_length / particle_spacing +
+                                             (Int(1.5 * recess_length / particle_spacing +
                                                   2 * boundary_layers),
                                               slip_wall_layers_outlet),
                                              (l - boundary_layers * particle_spacing,
@@ -135,7 +147,7 @@ boundary_slip_wall_outlet = RectangularShape(particle_spacing,
                                              density=fluid_density)
 
 recess_slip_wall_outlet = RectangularShape(particle_spacing,
-                                           (Int(recess_length / particle_spacing),
+                                           (Int(1.5 * recess_length / particle_spacing),
                                             slip_wall_layers_outlet),
                                            (l,
                                             -(slip_wall_layers_outlet + boundary_layers) *
@@ -190,7 +202,7 @@ end
 
 function velocity_function_outlet(pos, t)
     return SVector(0.0, -0.8 * prescribed_velocity)
-    #return SVector(0.0, -0.7(1 + tanh(0.5(t - 5))))
+    #return SVector(0.0, -0.8(1 + tanh(0.2(t - 10))))
 end
 
 inflow = InFlow(;
@@ -214,7 +226,7 @@ outflow = OutFlow(;
                              particle_spacing
                          ],
                          [
-                             l + recess_length,
+                             l + 1.5 * recess_length,
                              -(slip_wall_layers_outlet + boundary_layers -
                                open_boundary_layers) *
                              particle_spacing

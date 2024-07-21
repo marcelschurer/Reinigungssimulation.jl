@@ -12,7 +12,7 @@ smoothing_length = 3 * particle_spacing
 boundary_layers = 4
 
 # It is recommended to use `open_boundary_layers > boundary_layers`
-open_boundary_layers = 8
+open_boundary_layers = 6
 
 # ==========================================================================================
 # ==== Experiment Setup
@@ -20,13 +20,16 @@ tspan = (0.0, 20.0)
 inflow_direction = [1.0, 0.0]
 outflow_direction = [0.0, -1.0]
 
-obstacle = false # true: an obstacle sphere is placed at the beginning of the flow
+obstacle = true # true: an obstacle sphere is placed at the beginning of the flow
 
 l = 30 # length of cannula to the outlet [mm]
 d = 2 # diameter of the cannula [mm]
 recess_length = 5 # length of the recess at the outlet [mm]
 slip_wall_layers = 4 * open_boundary_layers
-slip_wall_layers_outlet = 14 * open_boundary_layers
+
+# note that open_boundary_layers <= stage_size_outlet_layers
+number_of_stages_outlet = 28
+stage_size_outlet_layers = 10
 
 # note that you might have to change velocity_function_outlet(pos, t) for another prescribed_velocity
 const prescribed_velocity = 1.0 # [m/s]
@@ -39,7 +42,7 @@ reynolds_number = prescribed_velocity * d * 10^-3 / kinematic_viscosity
 
 # For this particular example, it is necessary to have a background pressure.
 # Otherwise the suction at the outflow is to big and the simulation becomes unstable.
-pressure = 101824 # [Pa]
+pressure = 105000 # [Pa]
 
 # ==========================================================================================
 # ==== Initial Conditions
@@ -63,13 +66,38 @@ fluid_sphere = SphereShape(particle_spacing, (d / 2),
 
 fluid_recess = RectangularShape(particle_spacing,
                                 (Int(recess_length / particle_spacing),
-                                 Int(slip_wall_layers_outlet + boundary_layers)),
-                                (l,
-                                 -(slip_wall_layers_outlet + boundary_layers -
-                                   open_boundary_layers) * particle_spacing),
+                                 boundary_layers),
+                                (l, -boundary_layers * particle_spacing),
                                 pressure=pressure,
                                 density=fluid_density,
                                 velocity=[0.0, 0.0])
+
+fluid_outlet = Vector{Any}(undef, number_of_stages_outlet)
+for i in 1:number_of_stages_outlet
+    if i == number_of_stages_outlet
+        fluid_outlet[i] = RectangularShape(particle_spacing,
+                                           (Int(recess_length / particle_spacing +
+                                                (2 - 2 * i)),
+                                            stage_size_outlet_layers - open_boundary_layers),
+                                           ((l + (i - 1) *
+                                                 particle_spacing),
+                                            -(i * stage_size_outlet_layers +
+                                              boundary_layers - open_boundary_layers) *
+                                            particle_spacing), pressure=pressure,
+                                           density=fluid_density)
+    else
+        fluid_outlet[i] = RectangularShape(particle_spacing,
+                                           (Int(recess_length / particle_spacing +
+                                                (2 - 2 * i)),
+                                            stage_size_outlet_layers),
+                                           ((l + (i - 1) *
+                                                 particle_spacing),
+                                            -(i * stage_size_outlet_layers +
+                                              boundary_layers) *
+                                            particle_spacing), pressure=pressure,
+                                           density=fluid_density)
+    end
+end
 
 obstacle_sphere = SphereShape(particle_spacing,
                               (3 * particle_spacing),
@@ -80,10 +108,11 @@ obstacle_sphere = SphereShape(particle_spacing,
                               sphere_type=RoundSphere())
 
 if obstacle == true
-    ic_fluid = setdiff(union(fluid_rectangular, fluid_sphere, fluid_recess),
+    ic_fluid = setdiff(union(fluid_rectangular, fluid_sphere, fluid_recess,
+                             fluid_outlet...),
                        obstacle_sphere)
 else
-    ic_fluid = union(fluid_rectangular, fluid_sphere, fluid_recess)
+    ic_fluid = union(fluid_rectangular, fluid_sphere, fluid_recess, fluid_outlet...)
 end
 
 # = IC Boundary
@@ -124,27 +153,34 @@ recess_slip_wall_inlet = RectangularShape(particle_spacing,
                                           pressure=pressure,
                                           density=fluid_density)
 
-boundary_slip_wall_outlet = RectangularShape(particle_spacing,
-                                             (Int(recess_length / particle_spacing +
-                                                  2 * boundary_layers),
-                                              slip_wall_layers_outlet),
-                                             (l - boundary_layers * particle_spacing,
-                                              -(slip_wall_layers_outlet + boundary_layers) *
-                                              particle_spacing),
-                                             pressure=pressure,
-                                             density=fluid_density)
+slip_wall_outlet_left = Vector{Any}(undef, number_of_stages_outlet)
+slip_wall_outlet_right = Vector{Any}(undef, number_of_stages_outlet)
+for i in 1:number_of_stages_outlet
+    slip_wall_outlet_left[i] = RectangularShape(particle_spacing,
+                                                (boundary_layers,
+                                                 stage_size_outlet_layers),
+                                                ((l -
+                                                  (boundary_layers - i + 1) *
+                                                  particle_spacing),
+                                                 -(i * stage_size_outlet_layers +
+                                                   boundary_layers) *
+                                                 particle_spacing), pressure=pressure,
+                                                density=fluid_density)
+    slip_wall_outlet_right[i] = RectangularShape(particle_spacing,
+                                                 (boundary_layers,
+                                                  stage_size_outlet_layers),
+                                                 ((l + recess_length +
+                                                   (1 - i) *
+                                                   particle_spacing),
+                                                  -(i * stage_size_outlet_layers +
+                                                    boundary_layers) *
+                                                  particle_spacing), pressure=pressure,
+                                                 density=fluid_density)
+end
 
-recess_slip_wall_outlet = RectangularShape(particle_spacing,
-                                           (Int(recess_length / particle_spacing),
-                                            slip_wall_layers_outlet),
-                                           (l,
-                                            -(slip_wall_layers_outlet + boundary_layers) *
-                                            particle_spacing),
-                                           pressure=pressure,
-                                           density=fluid_density)
-
-ic_slip_wall = setdiff(union(boundary_slip_wall_inlet, boundary_slip_wall_outlet),
-                       union(recess_slip_wall_inlet, recess_slip_wall_outlet))
+ic_slip_wall = union(setdiff(boundary_slip_wall_inlet, recess_slip_wall_inlet),
+                     slip_wall_outlet_left...,
+                     slip_wall_outlet_right...)
 
 # ==========================================================================================
 # ==== Setup Fluid
@@ -206,19 +242,18 @@ inflow_system = OpenBoundarySPHSystem(inflow; sound_speed, fluid_system,
                                       reference_velocity=velocity_function_inlet,
                                       boundary_model=BoundaryModelTafuni())
 
+outflow_plane_A = ((l + (number_of_stages_outlet - 1) * particle_spacing),
+                   -(number_of_stages_outlet * stage_size_outlet_layers +
+                     boundary_layers -
+                     open_boundary_layers) * particle_spacing)
+outflow_plane_B = (l + recess_length +
+                   (1 - number_of_stages_outlet) * particle_spacing),
+                  -(number_of_stages_outlet * stage_size_outlet_layers +
+                    boundary_layers -
+                    open_boundary_layers) * particle_spacing
 outflow = OutFlow(;
-                  plane=([
-                             l,
-                             -(slip_wall_layers_outlet + boundary_layers -
-                               open_boundary_layers) *
-                             particle_spacing
-                         ],
-                         [
-                             l + recess_length,
-                             -(slip_wall_layers_outlet + boundary_layers -
-                               open_boundary_layers) *
-                             particle_spacing
-                         ]),
+                  plane=([outflow_plane_A[1], outflow_plane_A[2]],
+                         [outflow_plane_B[1], outflow_plane_B[2]]),
                   flow_direction=outflow_direction,
                   open_boundary_layers,
                   density=fluid_density,
