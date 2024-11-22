@@ -33,9 +33,6 @@ point_in_geometry_algorithm = WindingNumberJacobson(; geometry,
 
 # Returns `InitialCondition`
 inlet_sampled = ComplexShape(geometry; particle_spacing, density=density,
-                             boundary_thickness=5 * particle_spacing,
-                             create_signed_distance_field=true,
-                             sample_boundary=false,
                              point_in_geometry_algorithm)
 
 #trixi2vtk(inlet_sampled, filename="inlet")
@@ -54,6 +51,9 @@ point_in_geometry_algorithm = WindingNumberJacobson(; geometry,
 
 # Returns `InitialCondition`
 intake_manifold_sampled = ComplexShape(geometry; particle_spacing, density=density,
+                                       boundary_thickness=5 * particle_spacing,
+                                       create_signed_distance_field=true,
+                                       sample_boundary=false,
                                        point_in_geometry_algorithm)
 
 #trixi2vtk(intake_manifold_sampled, filename="intake_manifold")
@@ -113,6 +113,7 @@ fluid_system = EntropicallyDampedSPHSystem(intake_manifold_sampled, smoothing_ke
 # ==========================================================================================
 # ==== Boundary
 boundary_system = ParticlePackingSystem(intake_manifold_sampled; tlsph=tlsph,
+                                        #boundary_compress_factor=0.8,
                                         is_boundary=true, background_pressure=pressure)
 
 packing_system = ParticlePackingSystem(intake_manifold_sampled; tlsph=tlsph,
